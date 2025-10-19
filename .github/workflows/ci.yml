@@ -1,0 +1,50 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Debug file structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Files available:"
+          ls -R
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install dvc[gs] pytest cml
+
+      - name: Configure DVC remote
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS" > key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="key.json"
+          dvc pull
+
+      - name: Run tests
+        run: pytest --maxfail=1 --disable-warnings -q --junitxml=report.xml
+
+      - name: Publish results with CML
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## 🧪 Test Report" > report.md
+          pytest --maxfail=1 --disable-warnings -q >> report.md
+          cml comment create report.md
